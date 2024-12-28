@@ -14,7 +14,14 @@ app = tk.Tk()
 app.title('Airmon-NG GUI')
 
 # Tworzenie przycisku do uruchamiania polecenia
-run_button = tk.Button(app, text='Start Airmon', command=run_command)
+run_button = tk.Button(
+    app,
+    text='Start Airmon',
+    command=run_command,
+    width=20,          # Szerokość przycisku (liczba znaków)
+    height=2,          # Wysokość przycisku (liczba linii tekstu)
+    font=('Helvetica', 16)  # Czcionka i rozmiar tekstu
+)
 run_button.pack()
 
 # Tworzenie okna tekstowego do wyświetlania wyników
