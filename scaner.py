@@ -2,45 +2,55 @@ import tkinter as tk
 import subprocess
 import threading
 
+current_process = None  # Globalna zmienna przechowująca aktualny proces
+
 def run_command(command):
-    # Ogólna funkcja do uruchamiania poleceń
-    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-    output.delete(1.0, tk.END)
-    for line in iter(process.stdout.readline, ''):
-        output.insert(tk.END, line)
-        output.update()
+    global current_process
+    try:
+        current_process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        output.delete(1.0, tk.END)
+        for line in iter(current_process.stdout.readline, ''):
+            output.insert(tk.END, line)
+            output.update()
+    except Exception as e:
+        output.insert(tk.END, f"Error: {e}\n")
+    finally:
+        current_process = None  # Proces zakończony
+
+def stop_command():
+    global current_process
+    if current_process:
+        current_process.terminate()  # Wysyła sygnał zakończenia do procesu
+        output.insert(tk.END, "\nCommand stopped by user.\n")
+        current_process = None
 
 def run_airmon():
-    run_command(['airmon-ng', 'start', 'wlan1'])
+    threading.Thread(target=run_command, args=(['airmon-ng', 'start', 'wlan1'],), daemon=True).start()
 
 def run_iwconfig():
-    run_command(['iwconfig'])
+    threading.Thread(target=run_command, args=(['iwconfig'],), daemon=True).start()
 
 def run_systemctl_start_networkmanager():
-    run_command(['systemctl', 'start', 'NetworkManager'])
+    threading.Thread(target=run_command, args=(['systemctl', 'start', 'NetworkManager'],), daemon=True).start()
 
 def run_systemctl_stop_networkmanager():
-    run_command(['systemctl', 'stop', 'NetworkManager'])
+    threading.Thread(target=run_command, args=(['systemctl', 'stop', 'NetworkManager'],), daemon=True).start()
 
 def run_systemctl_restart_networkmanager():
-    run_command(['systemctl', 'restart', 'NetworkManager'])
+    threading.Thread(target=run_command, args=(['systemctl', 'restart', 'NetworkManager'],), daemon=True).start()
 
 def run_airmon_check_kill():
-    run_command(['airmon-ng', 'check', 'kill'])
+    threading.Thread(target=run_command, args=(['airmon-ng', 'check', 'kill'],), daemon=True).start()
 
 def run_airodump():
-    # Uruchamia 'airodump-ng wlan1' w osobnym wątku, aby nie blokować GUI
-    def airodump_process():
-        run_command(['airodump-ng', 'wlan1'])
-    threading.Thread(target=airodump_process, daemon=True).start()
+    threading.Thread(target=run_command, args=(['airodump-ng', 'wlan1'],), daemon=True).start()
 
 def run_wash():
-    run_command(['wash', '-i', 'wlan1'])
+    threading.Thread(target=run_command, args=(['wash', '-i', 'wlan1'],), daemon=True).start()
 
 def run_reaver():
-    # Wprowadź BSSID przez dodatkowe okno dialogowe
-    bssid = input("Enter BSSID: ")  # Zmień na interfejs Tkinter jeśli potrzebujesz
-    run_command(['reaver', '-i', 'wlan1', '-b', bssid, '-S', '-v'])
+    bssid = input("Enter BSSID: ")
+    threading.Thread(target=run_command, args=(['reaver', '-i', 'wlan1', '-b', bssid, '-S', '-v'],), daemon=True).start()
 
 # Tworzenie głównego okna aplikacji
 app = tk.Tk()
@@ -72,6 +82,7 @@ create_button(app, 'Airmon Check Kill', run_airmon_check_kill, 2, 1)
 create_button(app, 'Start Airodump', run_airodump, 3, 0)
 create_button(app, 'Wash', run_wash, 3, 1)
 create_button(app, 'Reaver', run_reaver, 4, 0)
+create_button(app, 'Stop Command', stop_command, 4, 1)  # Dodany przycisk do zatrzymywania procesu
 
 # Tworzenie okna tekstowego do wyświetlania wyników z paskiem przewijania
 scrollbar = tk.Scrollbar(app)
