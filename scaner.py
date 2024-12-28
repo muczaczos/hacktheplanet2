@@ -1,9 +1,17 @@
 import tkinter as tk
 import subprocess
 
-def run_command():
-    # Uruchamia polecenie bez 'sudo', bo aplikacja działa z uprawnieniami root
+def run_airmon():
+    # Uruchamia polecenie 'airmon-ng start wlan1'
     process = subprocess.Popen(['airmon-ng', 'start', 'wlan1'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    output.delete(1.0, tk.END)  # Czyści okno tekstowe przed nowym wyjściem
+    for line in iter(process.stdout.readline, ''):
+        output.insert(tk.END, line)  # Wyświetla dane w czasie rzeczywistym
+        output.update()
+
+def run_iwconfig():
+    # Uruchamia polecenie 'iwconfig'
+    process = subprocess.Popen(['iwconfig'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     output.delete(1.0, tk.END)  # Czyści okno tekstowe przed nowym wyjściem
     for line in iter(process.stdout.readline, ''):
         output.insert(tk.END, line)  # Wyświetla dane w czasie rzeczywistym
@@ -13,19 +21,30 @@ def run_command():
 app = tk.Tk()
 app.title('Airmon-NG GUI')
 
-# Tworzenie przycisku do uruchamiania polecenia
-run_button = tk.Button(
+# Przycisk do uruchamiania 'airmon-ng start wlan1'
+airmon_button = tk.Button(
     app,
     text='Start Airmon',
-    command=run_command,
-    width=20,          # Szerokość przycisku (liczba znaków)
-    height=2,          # Wysokość przycisku (liczba linii tekstu)
-    font=('Helvetica', 16)  # Czcionka i rozmiar tekstu
+    command=run_airmon,
+    width=20,
+    height=2,
+    font=('Helvetica', 16)
 )
-run_button.pack()
+airmon_button.pack(pady=10)
+
+# Przycisk do uruchamiania 'iwconfig'
+iwconfig_button = tk.Button(
+    app,
+    text='Show IWConfig',
+    command=run_iwconfig,
+    width=20,
+    height=2,
+    font=('Helvetica', 16)
+)
+iwconfig_button.pack(pady=10)
 
 # Tworzenie okna tekstowego do wyświetlania wyników
-output = tk.Text(app, height=20, width=80, font=('Courier', 16))
+output = tk.Text(app, height=20, width=80, font=('Courier', 14))
 output.pack()
 
 # Uruchamianie aplikacji
