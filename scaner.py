@@ -47,7 +47,6 @@ def run_airodump():
     threading.Thread(target=run_command, args=(['airodump-ng', 'wlan1'],), daemon=True).start()
 
 def run_wash():
-    # Funkcja, która uruchamia komendę 'wash' i analizuje jej wynik
     threading.Thread(target=display_wash_results, daemon=True).start()
 
 def display_wash_results():
@@ -56,6 +55,10 @@ def display_wash_results():
     line_number = 0
     checkbuttons = []  # Lista przechowująca Checkbuttons
     output.insert(tk.END, "Running wash command...\n")  # Debug: informacja, że komenda 'wash' jest uruchamiana
+
+    # Tworzymy osobny Frame do wyświetlania klientów
+    client_frame = tk.Frame(app)
+    client_frame.grid(row=6, column=0, columnspan=2, padx=10, pady=10, sticky="nsew")  # Dodatkowy wiersz na klientów
 
     for line in process.stdout:
         output.insert(tk.END, f"Processing line: {line}")  # Debug: każdy wiersz z wash
@@ -67,22 +70,16 @@ def display_wash_results():
             wps_version = parts[1]
             signal = parts[3]
             # Tworzenie GUI dla każdego klienta (BSSID)
-            row = line_number // 2
-            col = line_number % 2
-
-            client_frame = tk.Frame(app)
-            client_frame.grid(row=row, column=col, padx=5, pady=5)
-
-            tk.Label(client_frame, text=f"BSSID: {bssid}, WPS: {wps_version}, Signal: {signal}", font=('Helvetica', 12)).pack(side=tk.LEFT)
-
+            label = tk.Label(client_frame, text=f"BSSID: {bssid}, WPS: {wps_version}, Signal: {signal}", font=('Helvetica', 12))
+            label.grid(row=line_number, column=0, sticky="w", padx=5, pady=5)
+            
             var = tk.BooleanVar(value=False)
             checkbutton = tk.Checkbutton(client_frame, text="Select", variable=var)
-            checkbutton.pack(side=tk.RIGHT)
+            checkbutton.grid(row=line_number, column=1, sticky="e", padx=5, pady=5)
 
             # Przypisz do Checkbuttona funkcję zapisującą BSSID w zmiennej
             checkbutton.config(command=lambda bssid=bssid, var=var: select_bssid(bssid, var))
 
-            checkbuttons.append((bssid, var))  # Przechowuj BSSID i zmienną stanu checkboxa
             line_number += 1
 
     app.update()
