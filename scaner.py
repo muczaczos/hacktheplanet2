@@ -25,7 +25,7 @@ run_button = tk.Button(
 run_button.pack()
 
 # Tworzenie okna tekstowego do wyświetlania wyników
-output = tk.Text(app, height=20, width=80)
+output = tk.Text(app, height=20, width=80, font=('Courier', 16))
 output.pack()
 
 # Uruchamianie aplikacji
