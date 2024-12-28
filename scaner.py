@@ -50,7 +50,7 @@ def create_button(parent, text, command, row, column):
         command=command,
         width=20,
         height=2,
-        font=('Helvetica', 16)
+        font=('Helvetica', 20)
     )
     button.grid(row=row, column=column, padx=1, pady=1)
 
