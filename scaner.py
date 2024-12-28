@@ -3,7 +3,6 @@ import subprocess
 import threading
 
 current_process = None  # Globalna zmienna przechowująca aktualny proces
-selected_bssid = tk.StringVar(value="")  # Zmienna do przechowywania wybranego BSSID
 
 def run_command(command):
     global current_process
@@ -25,46 +24,32 @@ def stop_command():
         output.insert(tk.END, "\nCommand stopped by user.\n")
         current_process = None
 
-def parse_wash_output():
-    global current_process
-    process = subprocess.Popen(['wash', '-i', 'wlan1'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    bssid_list = []
-    for line in process.stdout:
-        if "Lck" in line or "BSSID" in line:
-            # Pomija nagłówki i wiersze niezawierające danych klientów
-            continue
-        parts = line.split()
-        if len(parts) >= 6 and parts[4] == "No":  # Sprawdź, czy 'Lck' jest 'No'
-            bssid = parts[0]
-            bssid_list.append(bssid)
-    return bssid_list
+def run_airmon():
+    threading.Thread(target=run_command, args=(['airmon-ng', 'start', 'wlan1'],), daemon=True).start()
 
-def run_wash_and_show_clients():
-    bssid_list = parse_wash_output()
-    if not bssid_list:
-        output.insert(tk.END, "No clients found with 'Lck: No'.\n")
-        return
-    
-    # Tworzenie radiobuttonów dla każdego BSSID
-    client_frame = tk.Frame(app)
-    client_frame.grid(row=5, column=0, columnspan=2, padx=10, pady=10)
-    
-    tk.Label(client_frame, text="Select a client BSSID:", font=('Helvetica', 14)).pack()
-    
-    for bssid in bssid_list:
-        tk.Radiobutton(
-            client_frame,
-            text=bssid,
-            variable=selected_bssid,
-            value=bssid,
-            font=('Helvetica', 12)
-        ).pack(anchor=tk.W)
+def run_iwconfig():
+    threading.Thread(target=run_command, args=(['iwconfig'],), daemon=True).start()
+
+def run_systemctl_start_networkmanager():
+    threading.Thread(target=run_command, args=(['systemctl', 'start', 'NetworkManager'],), daemon=True).start()
+
+def run_systemctl_stop_networkmanager():
+    threading.Thread(target=run_command, args=(['systemctl', 'stop', 'NetworkManager'],), daemon=True).start()
+
+def run_systemctl_restart_networkmanager():
+    threading.Thread(target=run_command, args=(['systemctl', 'restart', 'NetworkManager'],), daemon=True).start()
+
+def run_airmon_check_kill():
+    threading.Thread(target=run_command, args=(['airmon-ng', 'check', 'kill'],), daemon=True).start()
+
+def run_airodump():
+    threading.Thread(target=run_command, args=(['airodump-ng', 'wlan1'],), daemon=True).start()
+
+def run_wash():
+    threading.Thread(target=run_command, args=(['wash', '-i', 'wlan1'],), daemon=True).start()
 
 def run_reaver():
-    if not selected_bssid.get():
-        output.insert(tk.END, "No BSSID selected.\n")
-        return
-    bssid = selected_bssid.get()
+    bssid = input("Enter BSSID: ")
     threading.Thread(target=run_command, args=(['reaver', '-i', 'wlan1', '-b', bssid, '-S', '-v'],), daemon=True).start()
 
 # Tworzenie głównego okna aplikacji
@@ -88,16 +73,23 @@ def create_button(parent, text, command, row, column):
     button.grid(row=row, column=column, padx=1, pady=1)
 
 # Przyciski w dwóch kolumnach
-create_button(app, 'Wash', run_wash_and_show_clients, 0, 0)
-create_button(app, 'Run Reaver', run_reaver, 0, 1)
-create_button(app, 'Stop Command', stop_command, 1, 0)
+create_button(app, 'Start Airmon', run_airmon, 0, 0)
+create_button(app, 'Show IWConfig', run_iwconfig, 0, 1)
+create_button(app, 'Start NetworkManager', run_systemctl_start_networkmanager, 1, 0)
+create_button(app, 'Stop NetworkManager', run_systemctl_stop_networkmanager, 1, 1)
+create_button(app, 'Restart NetworkManager', run_systemctl_restart_networkmanager, 2, 0)
+create_button(app, 'Airmon Check Kill', run_airmon_check_kill, 2, 1)
+create_button(app, 'Start Airodump', run_airodump, 3, 0)
+create_button(app, 'Wash', run_wash, 3, 1)
+create_button(app, 'Reaver', run_reaver, 4, 0)
+create_button(app, 'Stop Command', stop_command, 4, 1)  # Dodany przycisk do zatrzymywania procesu
 
 # Tworzenie okna tekstowego do wyświetlania wyników z paskiem przewijania
 scrollbar = tk.Scrollbar(app)
-scrollbar.grid(row=4, column=2, sticky=tk.NS)
+scrollbar.grid(row=5, column=2, sticky=tk.NS)
 
 output = tk.Text(app, height=20, width=80, font=('Courier', 14), yscrollcommand=scrollbar.set)
-output.grid(row=4, column=0, columnspan=2, padx=10, pady=10)
+output.grid(row=5, column=0, columnspan=2, padx=10, pady=10)
 
 scrollbar.config(command=output.yview)
 
