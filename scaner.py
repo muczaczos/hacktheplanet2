@@ -48,7 +48,7 @@ def create_button(parent, text, command, row, column):
         height=2,
         font=('Helvetica', 14)
     )
-    button.grid(row=row, column=column, padx=10, pady=10)
+    button.grid(row=row, column=column, padx=5, pady=10)
 
 # Przyciski w dwóch kolumnach
 create_button(app, 'Start Airmon', run_airmon, 0, 0)
