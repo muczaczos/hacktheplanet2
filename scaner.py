@@ -55,8 +55,10 @@ def display_wash_results():
     output.delete(1.0, tk.END)  # Czyści wyjście przed nowymi danymi
     line_number = 0
     checkbuttons = []  # Lista przechowująca Checkbuttons
+    output.insert(tk.END, "Running wash command...\n")  # Debug: informacja, że komenda 'wash' jest uruchamiana
 
     for line in process.stdout:
+        output.insert(tk.END, f"Processing line: {line}")  # Debug: każdy wiersz z wash
         if "BSSID" in line:  # Ignoruj nagłówki
             continue
         parts = line.split()
