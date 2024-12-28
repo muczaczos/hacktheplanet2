@@ -34,6 +34,14 @@ def run_airodump():
         run_command(['airodump-ng', 'wlan1'])
     threading.Thread(target=airodump_process, daemon=True).start()
 
+def run_wash():
+    run_command(['wash', '-i', 'wlan1'])
+
+def run_reaver():
+    # Wprowadź BSSID przez dodatkowe okno dialogowe
+    bssid = input("Enter BSSID: ")  # Zmień na interfejs Tkinter jeśli potrzebujesz
+    run_command(['reaver', '-i', 'wlan1', '-b', bssid, '-S', '-v'])
+
 # Tworzenie głównego okna aplikacji
 app = tk.Tk()
 app.title('Airmon-NG GUI')
@@ -62,13 +70,15 @@ create_button(app, 'Stop NetworkManager', run_systemctl_stop_networkmanager, 1, 
 create_button(app, 'Restart NetworkManager', run_systemctl_restart_networkmanager, 2, 0)
 create_button(app, 'Airmon Check Kill', run_airmon_check_kill, 2, 1)
 create_button(app, 'Start Airodump', run_airodump, 3, 0)
+create_button(app, 'Wash', run_wash, 3, 1)
+create_button(app, 'Reaver', run_reaver, 4, 0)
 
 # Tworzenie okna tekstowego do wyświetlania wyników z paskiem przewijania
 scrollbar = tk.Scrollbar(app)
-scrollbar.grid(row=4, column=2, sticky=tk.NS)
+scrollbar.grid(row=5, column=2, sticky=tk.NS)
 
 output = tk.Text(app, height=20, width=80, font=('Courier', 14), yscrollcommand=scrollbar.set)
-output.grid(row=4, column=0, columnspan=2, padx=10, pady=10)
+output.grid(row=5, column=0, columnspan=2, padx=10, pady=10)
 
 scrollbar.config(command=output.yview)
 
