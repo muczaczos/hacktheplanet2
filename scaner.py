@@ -3,7 +3,7 @@ import subprocess
 import threading
 
 current_process = None  # Globalna zmienna przechowująca aktualny proces
-selected_bssid = tk.StringVar()  # Zmienna do przechowywania wybranego BSSID
+selected_bssid = tk.StringVar(value="")  # Zmienna do przechowywania wybranego BSSID
 
 def run_command(command):
     global current_process
