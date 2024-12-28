@@ -44,7 +44,7 @@ def create_button(parent, text, command, row, column):
         parent,
         text=text,
         command=command,
-        width=25,
+        width=20,
         height=2,
         font=('Helvetica', 14)
     )
