@@ -3,6 +3,7 @@ import subprocess
 import threading
 
 current_process = None  # Globalna zmienna przechowująca aktualny proces
+selected_bssid = None  # Zmienna do przechowywania wybranego BSSID
 
 def run_command(command):
     global current_process
@@ -46,11 +47,55 @@ def run_airodump():
     threading.Thread(target=run_command, args=(['airodump-ng', 'wlan1'],), daemon=True).start()
 
 def run_wash():
-    threading.Thread(target=run_command, args=(['wash', '-i', 'wlan1'],), daemon=True).start()
+    # Funkcja, która uruchamia komendę 'wash' i analizuje jej wynik
+    threading.Thread(target=display_wash_results, daemon=True).start()
+
+def display_wash_results():
+    process = subprocess.Popen(['wash', '-i', 'wlan1'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    output.delete(1.0, tk.END)  # Czyści wyjście przed nowymi danymi
+    line_number = 0
+    checkbuttons = []  # Lista przechowująca Checkbuttons
+
+    for line in process.stdout:
+        if "BSSID" in line:  # Ignoruj nagłówki
+            continue
+        parts = line.split()
+        if len(parts) >= 6:
+            bssid = parts[0]
+            wps_version = parts[1]
+            signal = parts[3]
+            # Tworzenie GUI dla każdego klienta (BSSID)
+            row = line_number // 2
+            col = line_number % 2
+
+            client_frame = tk.Frame(app)
+            client_frame.grid(row=row, column=col, padx=5, pady=5)
+
+            tk.Label(client_frame, text=f"BSSID: {bssid}, WPS: {wps_version}, Signal: {signal}", font=('Helvetica', 12)).pack(side=tk.LEFT)
+
+            var = tk.BooleanVar(value=False)
+            checkbutton = tk.Checkbutton(client_frame, text="Select", variable=var)
+            checkbutton.pack(side=tk.RIGHT)
+
+            # Przypisz do Checkbuttona funkcję zapisującą BSSID w zmiennej
+            checkbutton.config(command=lambda bssid=bssid, var=var: select_bssid(bssid, var))
+
+            checkbuttons.append((bssid, var))  # Przechowuj BSSID i zmienną stanu checkboxa
+            line_number += 1
+
+    app.update()
+
+def select_bssid(bssid, var):
+    global selected_bssid
+    if var.get():
+        selected_bssid = bssid
+        output.insert(tk.END, f"Selected BSSID: {bssid}\n")
 
 def run_reaver():
-    bssid = input("Enter BSSID: ")
-    threading.Thread(target=run_command, args=(['reaver', '-i', 'wlan1', '-b', bssid, '-S', '-v'],), daemon=True).start()
+    if not selected_bssid:
+        output.insert(tk.END, "No BSSID selected.\n")
+        return
+    threading.Thread(target=run_command, args=(['reaver', '-i', 'wlan1', '-b', selected_bssid, '-S', '-v'],), daemon=True).start()
 
 # Tworzenie głównego okna aplikacji
 app = tk.Tk()
