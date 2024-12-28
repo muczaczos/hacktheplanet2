@@ -38,6 +38,10 @@ def run_airodump():
 app = tk.Tk()
 app.title('Airmon-NG GUI')
 
+# Konfiguracja kolumn
+app.grid_columnconfigure(0, weight=1, uniform="column")
+app.grid_columnconfigure(1, weight=1, uniform="column")
+
 # Funkcja do tworzenia przycisku
 def create_button(parent, text, command, row, column):
     button = tk.Button(
