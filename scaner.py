@@ -1,10 +1,47 @@
 import tkinter as tk
-from tkinter import ttk
 import subprocess
 import threading
-import re
 
-current_process = None
+current_process = None  # Globalna zmienna przechowująca aktualny proces
+selected_bssid = None  # Zmienna do przechowywania wybranego BSSID
+
+def run_command(command):
+    global current_process
+    try:
+        current_process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        output.delete(1.0, tk.END)
+        for line in iter(current_process.stdout.readline, ''):
+            output.insert(tk.END, line)
+            output.update()
+    except Exception as e:
+        output.insert(tk.END, f"Error: {e}\n")
+    finally:
+        current_process = None  # Proces zakończony
+
+def stop_command():
+    global current_process
+    if current_process:
+        current_process.terminate()  # Wysyła sygnał zakończenia do procesu
+        output.insert(tk.END, "\nCommand stopped by user.\n")
+        current_process = None
+
+def run_airmon():
+    threading.Thread(target=run_command, args=(['airmon-ng', 'start', 'wlan1'],), daemon=True).start()
+
+def run_iwconfig():
+    threading.Thread(target=run_command, args=(['iwconfig'],), daemon=True).start()
+
+def run_systemctl_start_networkmanager():
+    threading.Thread(target=run_command, args=(['systemctl', 'start', 'NetworkManager'],), daemon=True).start()
+
+def run_systemctl_stop_networkmanager():
+    threading.Thread(target=run_command, args=(['systemctl', 'stop', 'NetworkManager'],), daemon=True).start()
+
+def run_systemctl_restart_networkmanager():
+    threading.Thread(target=run_command, args=(['systemctl', 'restart', 'NetworkManager'],), daemon=True).start()
+
+def run_airmon_check_kill():
+    threading.Thread(target=run_command, args=(['airmon-ng', 'check', 'kill'],), daemon=True).start()
 
 def run_airodump():
     global current_process
@@ -12,29 +49,31 @@ def run_airodump():
         return  # Unikamy uruchamiania kilku instancji naraz
 
     def update_airodump():
-        """Czyta dane z airodump-ng i dynamicznie aktualizuje tabelę."""
+        """Czyta dane z airodump-ng i dynamicznie aktualizuje okno tekstowe."""
         global current_process
-        seen_bssids = {}  # Przechowuje BSSID -> wpis w tabeli
-        
-        for line in iter(current_process.stdout.readline, ''):
-            match = re.match(r'([0-9A-F:]{17})\s+(-?\d+)\s+\d+\s+\d+\s+(\d+)\s+(\d+)\s+(.*?)\s+(WPA2?|WEP|OPN)?', line)
-            if match:
-                bssid, power, beacons, data, essid, enc = match.groups()
-                power = int(power)  # Siła sygnału jako liczba
-
-                if bssid not in seen_bssids:
-                    table.insert("", tk.END, values=(bssid, essid, power, enc))
-                    seen_bssids[bssid] = table.get_children()[-1]
+        try:
+            seen_lines = set()  # Przechowujemy unikalne linie
+            while True:
+                line = current_process.stdout.readline()
+                if not line:
+                    break
+                line = line.strip()
+                
+                if line not in seen_lines:
+                    seen_lines.add(line)  # Dodajemy nowe wpisy
                 else:
-                    table.item(seen_bssids[bssid], values=(bssid, essid, power, enc))
+                    continue  # Jeśli już jest, pomijamy
 
-            # Usuwanie z listy nieaktywnych stacji
-            for bssid in list(seen_bssids.keys()):
-                if bssid not in line:
-                    table.delete(seen_bssids[bssid])
-                    del seen_bssids[bssid]
+                # Aktualizacja GUI – czyszczenie i ponowne wyświetlanie
+                output.delete(1.0, tk.END)
+                output.insert(tk.END, "\n".join(seen_lines) + "\n")
+                output.update()
 
-        current_process = None  # Proces zakończony
+        except Exception as e:
+            output.insert(tk.END, f"Error: {e}\n")
+
+        finally:
+            current_process = None  # Proces zakończony
 
     try:
         current_process = subprocess.Popen(
@@ -42,36 +81,123 @@ def run_airodump():
         )
         threading.Thread(target=update_airodump, daemon=True).start()
     except Exception as e:
-        status_label.config(text=f"Error: {e}")
+        output.insert(tk.END, f"Error: {e}\n")
 
-def stop_airodump():
-    """Zatrzymuje proces airodump-ng."""
     global current_process
-    if current_process:
-        current_process.terminate()
-        current_process = None
-        status_label.config(text="Airodump Stopped.")
 
-# Tworzenie GUI
+    def update_output():
+        if current_process.poll() is None:  # Sprawdzamy, czy proces nadal działa
+            output.delete(1.0, tk.END)  # Czyścimy okno przed nowymi danymi
+            for _ in range(10):  # Pobierz kilka linii na raz dla płynności
+                line = current_process.stdout.readline()
+                if not line:
+                    break
+                output.insert(tk.END, line)
+            output.update()
+            app.after(500, update_output)  # Odświeżanie co 500 ms
+
+    # Uruchamiamy proces airodump-ng
+    try:
+        current_process = subprocess.Popen(
+            ['airodump-ng', 'wlan1'], 
+            stdout=subprocess.PIPE, 
+            stderr=subprocess.STDOUT, 
+            text=True
+        )
+        update_output()  # Rozpoczynamy dynamiczne aktualizowanie wyników
+    except Exception as e:
+        output.insert(tk.END, f"Error: {e}\n")
+
+def run_wash():
+    threading.Thread(target=display_wash_results, daemon=True).start()
+
+def display_wash_results():
+    process = subprocess.Popen(['wash', '-i', 'wlan1'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    output.delete(1.0, tk.END)  # Czyści wyjście przed nowymi danymi
+    line_number = 0
+    checkbuttons = []  # Lista przechowująca Checkbuttons
+    output.insert(tk.END, "Running wash command...\n")  # Debug: informacja, że komenda 'wash' jest uruchamiana
+
+    # Tworzymy osobny Frame do wyświetlania klientów
+    client_frame = tk.Frame(app)
+    client_frame.grid(row=6, column=0, columnspan=2, padx=10, pady=10, sticky="nsew")  # Dodatkowy wiersz na klientów
+
+    for line in process.stdout:
+        output.insert(tk.END, f"Processing line: {line}")  # Debug: każdy wiersz z wash
+        if "BSSID" in line:  # Ignoruj nagłówki
+            continue
+        parts = line.split()
+        if len(parts) >= 6:
+            bssid = parts[0]
+            wps_version = parts[1]
+            signal = parts[3]
+            # Tworzenie GUI dla każdego klienta (BSSID)
+            label = tk.Label(client_frame, text=f"BSSID: {bssid}, WPS: {wps_version}, Signal: {signal}", font=('Helvetica', 12))
+            label.grid(row=line_number, column=0, sticky="w", padx=5, pady=5)
+            
+            var = tk.BooleanVar(value=False)
+            checkbutton = tk.Checkbutton(client_frame, text="Select", variable=var)
+            checkbutton.grid(row=line_number, column=1, sticky="e", padx=5, pady=5)
+
+            # Przypisz do Checkbuttona funkcję zapisującą BSSID w zmiennej
+            checkbutton.config(command=lambda bssid=bssid, var=var: select_bssid(bssid, var))
+
+            line_number += 1
+
+    app.update()
+
+def select_bssid(bssid, var):
+    global selected_bssid
+    if var.get():
+        selected_bssid = bssid
+        output.insert(tk.END, f"Selected BSSID: {bssid}\n")
+
+def run_reaver():
+    if not selected_bssid:
+        output.insert(tk.END, "No BSSID selected.\n")
+        return
+    threading.Thread(target=run_command, args=(['reaver', '-i', 'wlan1', '-b', selected_bssid, '-S', '-v'],), daemon=True).start()
+
+# Tworzenie głównego okna aplikacji
 app = tk.Tk()
-app.title("Airodump-NG GUI")
+app.title('Airmon-NG GUI')
 
-# Tabela wyników
-columns = ("BSSID", "ESSID", "Power", "Encryption")
-table = ttk.Treeview(app, columns=columns, show="headings", height=15)
-for col in columns:
-    table.heading(col, text=col)
-    table.column(col, width=150)
-table.pack(padx=10, pady=10, fill="both", expand=True)
+# Konfiguracja kolumn
+app.grid_columnconfigure(0, weight=1, uniform="column")
+app.grid_columnconfigure(1, weight=1, uniform="column")
 
-# Przyciski
-btn_start = tk.Button(app, text="Start Airodump", command=run_airodump)
-btn_stop = tk.Button(app, text="Stop Airodump", command=stop_airodump)
-btn_start.pack(side=tk.LEFT, padx=10, pady=5)
-btn_stop.pack(side=tk.RIGHT, padx=10, pady=5)
+# Funkcja do tworzenia przycisku
+def create_button(parent, text, command, row, column):
+    button = tk.Button(
+        parent,
+        text=text,
+        command=command,
+        width=20,
+        height=2,
+        font=('Helvetica', 20)
+    )
+    button.grid(row=row, column=column, padx=1, pady=1)
 
-# Status
-status_label = tk.Label(app, text="Ready", fg="blue")
-status_label.pack()
+# Przyciski w dwóch kolumnach
+create_button(app, 'Start Airmon', run_airmon, 0, 0)
+create_button(app, 'Show IWConfig', run_iwconfig, 0, 1)
+create_button(app, 'Start NetworkManager', run_systemctl_start_networkmanager, 1, 0)
+create_button(app, 'Stop NetworkManager', run_systemctl_stop_networkmanager, 1, 1)
+create_button(app, 'Restart NetworkManager', run_systemctl_restart_networkmanager, 2, 0)
+create_button(app, 'Airmon Check Kill', run_airmon_check_kill, 2, 1)
+create_button(app, 'Start Airodump', run_airodump, 3, 0)
+create_button(app, 'Wash', run_wash, 3, 1)
+create_button(app, 'Reaver', run_reaver, 4, 0)
+create_button(app, 'Stop Command', stop_command, 4, 1)  # Dodany przycisk do zatrzymywania procesu
 
+# Tworzenie okna tekstowego do wyświetlania wyników z paskiem przewijania
+scrollbar = tk.Scrollbar(app)
+scrollbar.grid(row=5, column=2, sticky=tk.NS)
+
+output = tk.Text(app, height=20, width=80, font=('Courier', 14), yscrollcommand=scrollbar.set)
+output.grid(row=5, column=0, columnspan=2, padx=10, pady=10)
+
+scrollbar.config(command=output.yview)
+
+# Uruchamianie aplikacji
 app.mainloop()
