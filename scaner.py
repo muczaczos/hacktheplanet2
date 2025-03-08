@@ -4,6 +4,7 @@ import threading
 
 current_process = None  # Globalna zmienna przechowująca aktualny proces
 selected_bssid = None  # Zmienna do przechowywania wybranego BSSID
+displayed_bssids = {}  # Przechowuje aktualnie wyświetlane BSSID
 
 def run_command(command):
     global current_process
@@ -44,51 +45,38 @@ def run_airmon_check_kill():
     threading.Thread(target=run_command, args=(['airmon-ng', 'check', 'kill'],), daemon=True).start()
 
 def run_airodump():
-    threading.Thread(target=run_command, args=(['airodump-ng', 'wlan1'],), daemon=True).start()
+    threading.Thread(target=display_airodump_results, daemon=True).start()
+
+def display_airodump_results():
+    global displayed_bssids
+    process = subprocess.Popen(['airodump-ng', 'wlan1'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    output.delete(1.0, tk.END)
+    output.insert(tk.END, "Running airodump-ng...\n")
+    
+    for line in process.stdout:
+        parts = line.split()
+        if len(parts) < 6 or parts[0] == "BSSID":
+            continue  # Pomijamy nagłówki i niekompletne linie
+        
+        bssid = parts[0]
+        power = parts[2]  # RSSI/Sygnał
+        channel = parts[3]
+        essid = " ".join(parts[5:]) if len(parts) > 5 else "Unknown"
+        
+        displayed_bssids[bssid] = f"{bssid} | CH: {channel} | Signal: {power} | {essid}\n"
+        
+        output.delete(1.0, tk.END)
+        for entry in displayed_bssids.values():
+            output.insert(tk.END, entry)
+        output.update()
 
 def run_wash():
     threading.Thread(target=display_wash_results, daemon=True).start()
 
 def display_wash_results():
     process = subprocess.Popen(['wash', '-i', 'wlan1'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    output.delete(1.0, tk.END)  # Czyści wyjście przed nowymi danymi
-    line_number = 0
-    checkbuttons = []  # Lista przechowująca Checkbuttons
-    output.insert(tk.END, "Running wash command...\n")  # Debug: informacja, że komenda 'wash' jest uruchamiana
-
-    # Tworzymy osobny Frame do wyświetlania klientów
-    client_frame = tk.Frame(app)
-    client_frame.grid(row=6, column=0, columnspan=2, padx=10, pady=10, sticky="nsew")  # Dodatkowy wiersz na klientów
-
-    for line in process.stdout:
-        output.insert(tk.END, f"Processing line: {line}")  # Debug: każdy wiersz z wash
-        if "BSSID" in line:  # Ignoruj nagłówki
-            continue
-        parts = line.split()
-        if len(parts) >= 6:
-            bssid = parts[0]
-            wps_version = parts[1]
-            signal = parts[3]
-            # Tworzenie GUI dla każdego klienta (BSSID)
-            label = tk.Label(client_frame, text=f"BSSID: {bssid}, WPS: {wps_version}, Signal: {signal}", font=('Helvetica', 12))
-            label.grid(row=line_number, column=0, sticky="w", padx=5, pady=5)
-            
-            var = tk.BooleanVar(value=False)
-            checkbutton = tk.Checkbutton(client_frame, text="Select", variable=var)
-            checkbutton.grid(row=line_number, column=1, sticky="e", padx=5, pady=5)
-
-            # Przypisz do Checkbuttona funkcję zapisującą BSSID w zmiennej
-            checkbutton.config(command=lambda bssid=bssid, var=var: select_bssid(bssid, var))
-
-            line_number += 1
-
-    app.update()
-
-def select_bssid(bssid, var):
-    global selected_bssid
-    if var.get():
-        selected_bssid = bssid
-        output.insert(tk.END, f"Selected BSSID: {bssid}\n")
+    output.delete(1.0, tk.END)
+    output.insert(tk.END, "Running wash command...\n")
 
 def run_reaver():
     if not selected_bssid:
@@ -104,7 +92,6 @@ app.title('Airmon-NG GUI')
 app.grid_columnconfigure(0, weight=1, uniform="column")
 app.grid_columnconfigure(1, weight=1, uniform="column")
 
-# Funkcja do tworzenia przycisku
 def create_button(parent, text, command, row, column):
     button = tk.Button(
         parent,
@@ -116,7 +103,6 @@ def create_button(parent, text, command, row, column):
     )
     button.grid(row=row, column=column, padx=1, pady=1)
 
-# Przyciski w dwóch kolumnach
 create_button(app, 'Start Airmon', run_airmon, 0, 0)
 create_button(app, 'Show IWConfig', run_iwconfig, 0, 1)
 create_button(app, 'Start NetworkManager', run_systemctl_start_networkmanager, 1, 0)
@@ -126,9 +112,8 @@ create_button(app, 'Airmon Check Kill', run_airmon_check_kill, 2, 1)
 create_button(app, 'Start Airodump', run_airodump, 3, 0)
 create_button(app, 'Wash', run_wash, 3, 1)
 create_button(app, 'Reaver', run_reaver, 4, 0)
-create_button(app, 'Stop Command', stop_command, 4, 1)  # Dodany przycisk do zatrzymywania procesu
+create_button(app, 'Stop Command', stop_command, 4, 1)
 
-# Tworzenie okna tekstowego do wyświetlania wyników z paskiem przewijania
 scrollbar = tk.Scrollbar(app)
 scrollbar.grid(row=5, column=2, sticky=tk.NS)
 
@@ -137,5 +122,4 @@ output.grid(row=5, column=0, columnspan=2, padx=10, pady=10)
 
 scrollbar.config(command=output.yview)
 
-# Uruchamianie aplikacji
 app.mainloop()
