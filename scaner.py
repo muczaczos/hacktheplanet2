@@ -44,69 +44,7 @@ def run_airmon_check_kill():
     threading.Thread(target=run_command, args=(['airmon-ng', 'check', 'kill'],), daemon=True).start()
 
 def run_airodump():
-    global current_process
-    if current_process:
-        return  # Unikamy uruchamiania kilku instancji naraz
-
-    def update_airodump():
-        """Czyta dane z airodump-ng i dynamicznie aktualizuje okno tekstowe."""
-        global current_process
-        try:
-            seen_lines = set()  # Przechowujemy unikalne linie
-            while True:
-                line = current_process.stdout.readline()
-                if not line:
-                    break
-                line = line.strip()
-                
-                if line not in seen_lines:
-                    seen_lines.add(line)  # Dodajemy nowe wpisy
-                else:
-                    continue  # Jeśli już jest, pomijamy
-
-                # Aktualizacja GUI – czyszczenie i ponowne wyświetlanie
-                output.delete(1.0, tk.END)
-                output.insert(tk.END, "\n".join(seen_lines) + "\n")
-                output.update()
-
-        except Exception as e:
-            output.insert(tk.END, f"Error: {e}\n")
-
-        finally:
-            current_process = None  # Proces zakończony
-
-    try:
-        current_process = subprocess.Popen(
-            ['airodump-ng', 'wlan1'], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True
-        )
-        threading.Thread(target=update_airodump, daemon=True).start()
-    except Exception as e:
-        output.insert(tk.END, f"Error: {e}\n")
-
-    global current_process
-
-    def update_output():
-        if current_process.poll() is None:  # Sprawdzamy, czy proces nadal działa
-            output.delete(1.0, tk.END)  # Czyścimy okno przed nowymi danymi
-            for _ in range(10):  # Pobierz kilka linii na raz dla płynności
-                line = current_process.stdout.readline()
-                if not line:
-                    break
-                output.insert(tk.END, line)
-            output.update()
-            app.after(500, update_output)  # Odświeżanie co 500 ms
-
-    # Uruchamiamy proces airodump-ng
-    try:
-        current_process = subprocess.Popen(
-            ['airodump-ng', 'wlan1'], 
-            stdout=subprocess.PIPE, 
-            stderr=subprocess.STDOUT, 
-            text=True
-        )
-        update_output()  # Rozpoczynamy dynamiczne aktualizowanie wyników
-    except Exception as e:
-        output.insert(tk.END, f"Error: {e}\n")
+    threading.Thread(target=run_command, args=(['airodump-ng', 'wlan1'],), daemon=True).start()
 
 def run_wash():
     threading.Thread(target=display_wash_results, daemon=True).start()
