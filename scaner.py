@@ -4,16 +4,15 @@ import threading
 
 current_process = None  # Globalna zmienna przechowująca aktualny proces
 selected_bssid = None  # Zmienna do przechowywania wybranego BSSID
-displayed_bssids = {}  # Przechowuje aktualnie wyświetlane BSSID
+displayed_stations = []  # Przechowuje stacje
+displayed_clients = []  # Przechowuje klientów
 
 def run_command(command):
     global current_process
     try:
         current_process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-        for line in iter(current_process.stdout.readline, ''):
-            update_output(line)
     except Exception as e:
-        update_output(f"Error: {e}\n")
+        print(f"Error: {e}")
     finally:
         current_process = None  # Proces zakończony
 
@@ -21,60 +20,64 @@ def stop_command():
     global current_process
     if current_process:
         current_process.terminate()
-        update_output("\nCommand stopped by user.\n")
         current_process = None
-
-def update_output(text):
-    output_label.config(text=text)
 
 def run_airmon():
     threading.Thread(target=run_command, args=(['airmon-ng', 'start', 'wlan1'],), daemon=True).start()
-
-def run_iwconfig():
-    threading.Thread(target=run_command, args=(['iwconfig'],), daemon=True).start()
-
-def run_systemctl_start_networkmanager():
-    threading.Thread(target=run_command, args=(['systemctl', 'start', 'NetworkManager'],), daemon=True).start()
-
-def run_systemctl_stop_networkmanager():
-    threading.Thread(target=run_command, args=(['systemctl', 'stop', 'NetworkManager'],), daemon=True).start()
-
-def run_systemctl_restart_networkmanager():
-    threading.Thread(target=run_command, args=(['systemctl', 'restart', 'NetworkManager'],), daemon=True).start()
-
-def run_airmon_check_kill():
-    threading.Thread(target=run_command, args=(['airmon-ng', 'check', 'kill'],), daemon=True).start()
 
 def run_airodump():
     threading.Thread(target=display_airodump_results, daemon=True).start()
 
 def display_airodump_results():
-    global displayed_bssids
+    global displayed_stations, displayed_clients
     process = subprocess.Popen(['airodump-ng', 'wlan1'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     for line in process.stdout:
         parts = line.split()
         if len(parts) < 6 or parts[0] == "BSSID":
-            continue  
-        bssid = parts[0]
-        power = parts[2]  
-        channel = parts[3]
-        essid = " ".join(parts[5:]) if len(parts) > 5 else "Unknown"
-        displayed_bssids[bssid] = f"{bssid} | CH: {channel} | Signal: {power} | {essid}"
-        update_output("\n".join(displayed_bssids.values()))
+            continue  # Pomijamy nagłówki i niekompletne linie
+        
+        if len(parts) >= 6 and len(parts) < 8:
+            bssid = parts[0]
+            power = parts[2]  # RSSI/Sygnał
+            channel = parts[3]
+            station_data = f"{bssid} | CH: {channel} | Signal: {power}"
+            displayed_stations.append(station_data)
+        
+        if len(parts) >= 8:
+            client_mac = parts[0]
+            station_mac = parts[5]
+            power = parts[3]
+            channel = parts[4]
+            client_data = f"{client_mac} | {station_mac} | CH: {channel} | Signal: {power}"
+            displayed_clients.append(client_data)
+        
+    update_display()
 
-def run_wash():
-    threading.Thread(target=run_command, args=(['wash', '-i', 'wlan1'],), daemon=True).start()
+def update_display():
+    station_list.delete(0, tk.END)
+    client_list.delete(0, tk.END)
+    for station in displayed_stations:
+        station_list.insert(tk.END, station)
+    for client in displayed_clients:
+        client_list.insert(tk.END, client)
 
-def run_reaver():
-    if not selected_bssid:
-        update_output("No BSSID selected.")
-        return
-    threading.Thread(target=run_command, args=(['reaver', '-i', 'wlan1', '-b', selected_bssid, '-S', '-v'],), daemon=True).start()
-
+# Tworzenie głównego okna aplikacji
 app = tk.Tk()
 app.title('Airmon-NG GUI')
-app.grid_columnconfigure(0, weight=1, uniform="column")
-app.grid_columnconfigure(1, weight=1, uniform="column")
+
+# Nagłówki kolumn
+header_frame = tk.Frame(app)
+header_frame.grid(row=0, column=0, columnspan=2, pady=5)
+
+tk.Label(header_frame, text="Stations", font=("Helvetica", 14, "bold")).grid(row=0, column=0, padx=50)
+tk.Label(header_frame, text="Clients", font=("Helvetica", 14, "bold")).grid(row=0, column=1, padx=50)
+
+# Listboxy do wyświetlania wyników
+station_list = tk.Listbox(app, height=20, width=50, font=('Courier', 12))
+station_list.grid(row=1, column=0, padx=10, pady=10)
+
+client_list = tk.Listbox(app, height=20, width=50, font=('Courier', 12))
+client_list.grid(row=1, column=1, padx=10, pady=10)
 
 def create_button(parent, text, command, row, column):
     button = tk.Button(
@@ -83,22 +86,12 @@ def create_button(parent, text, command, row, column):
         command=command,
         width=20,
         height=2,
-        font=('Helvetica', 20)
+        font=('Helvetica', 12)
     )
-    button.grid(row=row, column=column, padx=1, pady=1)
+    button.grid(row=row, column=column, padx=5, pady=5)
 
-create_button(app, 'Start Airmon', run_airmon, 0, 0)
-create_button(app, 'Show IWConfig', run_iwconfig, 0, 1)
-create_button(app, 'Start NetworkManager', run_systemctl_start_networkmanager, 1, 0)
-create_button(app, 'Stop NetworkManager', run_systemctl_stop_networkmanager, 1, 1)
-create_button(app, 'Restart NetworkManager', run_systemctl_restart_networkmanager, 2, 0)
-create_button(app, 'Airmon Check Kill', run_airmon_check_kill, 2, 1)
-create_button(app, 'Start Airodump', run_airodump, 3, 0)
-create_button(app, 'Wash', run_wash, 3, 1)
-create_button(app, 'Reaver', run_reaver, 4, 0)
-create_button(app, 'Stop Command', stop_command, 4, 1)
-
-output_label = tk.Label(app, text="Output will be displayed here", font=('Courier', 14), justify="left", anchor="w")
-output_label.grid(row=5, column=0, columnspan=2, padx=10, pady=10, sticky="w")
+create_button(app, 'Start Airmon', run_airmon, 2, 0)
+create_button(app, 'Start Airodump', run_airodump, 2, 1)
+create_button(app, 'Stop Command', stop_command, 3, 0)
 
 app.mainloop()
