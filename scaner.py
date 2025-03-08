@@ -44,7 +44,30 @@ def run_airmon_check_kill():
     threading.Thread(target=run_command, args=(['airmon-ng', 'check', 'kill'],), daemon=True).start()
 
 def run_airodump():
-    threading.Thread(target=run_command, args=(['airodump-ng', 'wlan1'],), daemon=True).start()
+    global current_process
+
+    def update_output():
+        if current_process.poll() is None:  # Sprawdzamy, czy proces nadal działa
+            output.delete(1.0, tk.END)  # Czyścimy okno przed nowymi danymi
+            for _ in range(10):  # Pobierz kilka linii na raz dla płynności
+                line = current_process.stdout.readline()
+                if not line:
+                    break
+                output.insert(tk.END, line)
+            output.update()
+            app.after(500, update_output)  # Odświeżanie co 500 ms
+
+    # Uruchamiamy proces airodump-ng
+    try:
+        current_process = subprocess.Popen(
+            ['airodump-ng', 'wlan1'], 
+            stdout=subprocess.PIPE, 
+            stderr=subprocess.STDOUT, 
+            text=True
+        )
+        update_output()  # Rozpoczynamy dynamiczne aktualizowanie wyników
+    except Exception as e:
+        output.insert(tk.END, f"Error: {e}\n")
 
 def run_wash():
     threading.Thread(target=display_wash_results, daemon=True).start()
