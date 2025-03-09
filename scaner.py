@@ -1,96 +1,243 @@
 import tkinter as tk
+from tkinter import ttk
 import subprocess
 import threading
 
 current_process = None  # Globalna zmienna przechowująca aktualny proces
-selected_bssid = None  # Zmienna do przechowywania wybranego BSSID
-displayed_bssids = {}  # Przechowuje aktualnie wyświetlane BSSID
+selected_station = None  # Tutaj możemy przechowywać wybrane stacje
+selected_client = None   # Tutaj możemy przechowywać wybranych klientów
 
+# ====== Funkcje ogólne ====== #
 def run_command(command):
+    """
+    Uruchamia dowolne polecenie w subprocess.
+    Nie wyświetla już wyniku w Text, ale można to rozszerzyć.
+    """
     global current_process
     try:
-        current_process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-        output.delete(1.0, tk.END)
-        for line in iter(current_process.stdout.readline, ''):
-            output.insert(tk.END, line)
-            output.update()
+        current_process = subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True
+        )
     except Exception as e:
-        output.insert(tk.END, f"Error: {e}\n")
+        print(f"Error: {e}")
     finally:
-        current_process = None  # Proces zakończony
-
-def stop_command():
-    global current_process
-    if current_process:
-        current_process.terminate()  # Wysyła sygnał zakończenia do procesu
-        output.insert(tk.END, "\nCommand stopped by user.\n")
         current_process = None
 
+def stop_command():
+    """
+    Zatrzymuje aktualnie uruchomiony proces (np. airodump-ng).
+    """
+    global current_process
+    if current_process:
+        current_process.terminate()
+        current_process = None
+
+# ====== Funkcje do przycisków z Twojego kodu ====== #
 def run_airmon():
-    threading.Thread(target=run_command, args=(['airmon-ng', 'start', 'wlan1'],), daemon=True).start()
+    threading.Thread(
+        target=run_command,
+        args=(['airmon-ng', 'start', 'wlan1'],),
+        daemon=True
+    ).start()
 
 def run_iwconfig():
-    threading.Thread(target=run_command, args=(['iwconfig'],), daemon=True).start()
+    threading.Thread(
+        target=run_command,
+        args=(['iwconfig'],),
+        daemon=True
+    ).start()
 
 def run_systemctl_start_networkmanager():
-    threading.Thread(target=run_command, args=(['systemctl', 'start', 'NetworkManager'],), daemon=True).start()
+    threading.Thread(
+        target=run_command,
+        args=(['systemctl', 'start', 'NetworkManager'],),
+        daemon=True
+    ).start()
 
 def run_systemctl_stop_networkmanager():
-    threading.Thread(target=run_command, args=(['systemctl', 'stop', 'NetworkManager'],), daemon=True).start()
+    threading.Thread(
+        target=run_command,
+        args=(['systemctl', 'stop', 'NetworkManager'],),
+        daemon=True
+    ).start()
 
 def run_systemctl_restart_networkmanager():
-    threading.Thread(target=run_command, args=(['systemctl', 'restart', 'NetworkManager'],), daemon=True).start()
+    threading.Thread(
+        target=run_command,
+        args=(['systemctl', 'restart', 'NetworkManager'],),
+        daemon=True
+    ).start()
 
 def run_airmon_check_kill():
-    threading.Thread(target=run_command, args=(['airmon-ng', 'check', 'kill'],), daemon=True).start()
+    threading.Thread(
+        target=run_command,
+        args=(['airmon-ng', 'check', 'kill'],),
+        daemon=True
+    ).start()
 
+def run_reaver():
+    """
+    Przykładowa funkcja, która mogłaby korzystać z selected_station/selected_client.
+    """
+    global selected_station
+    if not selected_station:
+        print("No station selected!")
+        return
+    threading.Thread(
+        target=run_command,
+        args=(['reaver', '-i', 'wlan1', '-b', selected_station, '-S', '-v'],),
+        daemon=True
+    ).start()
+
+# ====== Funkcje do airodump-ng ====== #
 def run_airodump():
+    """
+    Uruchamiamy wątek, który odpala airodump-ng i parsuje dane.
+    """
     threading.Thread(target=display_airodump_results, daemon=True).start()
 
 def display_airodump_results():
-    global displayed_bssids
-    process = subprocess.Popen(['airodump-ng', 'wlan1'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    output.delete(1.0, tk.END)
-    output.insert(tk.END, "Running airodump-ng...\n")
-    
+    """
+    Odpala airodump-ng, parsuje wyniki i wyświetla je w dwóch tabelach:
+    - Stations
+    - Clients
+    """
+    # Czyścimy istniejące dane w tabelach
+    for row in stations_tree.get_children():
+        stations_tree.delete(row)
+    for row in clients_tree.get_children():
+        clients_tree.delete(row)
+
+    process = subprocess.Popen(
+        ['airodump-ng', 'wlan1'],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True
+    )
+
+    # Parsujemy linie airodump-ng
     for line in process.stdout:
         parts = line.split()
-        if len(parts) < 6 or parts[0] == "BSSID":
-            continue  # Pomijamy nagłówki i niekompletne linie
-        
-        bssid = parts[0]
-        power = parts[2]  # RSSI/Sygnał
-        channel = parts[3]
-        essid = " ".join(parts[5:]) if len(parts) > 5 else "Unknown"
-        
-        displayed_bssids[bssid] = f"{bssid} | CH: {channel} | Signal: {power} | {essid}\n"
-        
-        output.delete(1.0, tk.END)
-        for entry in displayed_bssids.values():
-            output.insert(tk.END, entry)
-        output.update()
+        if not parts or parts[0] in ["BSSID", "Station", ""]:
+            continue
 
-def run_wash():
-    threading.Thread(target=display_wash_results, daemon=True).start()
+        # Przykład: rozróżniamy stację i klienta po liczbie kolumn
+        # (to jest uproszczone - dopasuj do realnego formatu airodump-ng)
+        if len(parts) >= 8:
+            # Prawdopodobnie klient
+            # BSSID, Station, PWR, Rate, Lost, Frames, Probe
+            # Indeksy do dopracowania w zależności od faktycznego formatu
+            bssid      = parts[0]
+            station    = parts[1]
+            pwr        = parts[2]
+            rate       = parts[3]
+            lost       = parts[4]
+            # Możesz dodać więcej kolumn, np. frames, probe
+            insert_client(bssid, station, pwr, rate, lost)
+        else:
+            # Prawdopodobnie stacja
+            # BSSID, PWR, Beacons, #Data, CH, MB, ENC, ...
+            bssid    = parts[0]
+            pwr      = parts[1]
+            beacons  = parts[2] if len(parts) > 2 else ""
+            data     = parts[3] if len(parts) > 3 else ""
+            ch       = parts[4] if len(parts) > 4 else ""
+            mb       = parts[5] if len(parts) > 5 else ""
+            insert_station(bssid, pwr, beacons, data, ch, mb)
 
-def display_wash_results():
-    process = subprocess.Popen(['wash', '-i', 'wlan1'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    output.delete(1.0, tk.END)
-    output.insert(tk.END, "Running wash command...\n")
+def insert_station(bssid, pwr, beacons, data, ch, mb):
+    """
+    Dodaje wiersz do tabeli Stations z checkboxem.
+    """
+    # Tworzymy unikalny identyfikator wiersza
+    row_id = stations_tree.insert("", tk.END, values=(bssid, pwr, beacons, data, ch, mb, ""))
+    # Dodajemy checkbox w kolumnie 7
+    # Niestety standardowy Treeview nie ma wbudowanych checkboxów,
+    # więc często robi się to np. przez ikonki lub osobną kolumnę z Buttonem.
+    # Poniżej - przykładowy hack z "opcja #7" jako placeholder:
+    create_checkbox_for_tree(stations_tree, row_id, 6, bssid, station=True)
 
-def run_reaver():
-    if not selected_bssid:
-        output.insert(tk.END, "No BSSID selected.\n")
+def insert_client(bssid, station, pwr, rate, lost):
+    """
+    Dodaje wiersz do tabeli Clients z checkboxem.
+    """
+    row_id = clients_tree.insert("", tk.END, values=(bssid, station, pwr, rate, lost, ""))
+    create_checkbox_for_tree(clients_tree, row_id, 5, bssid, station=False)
+
+def create_checkbox_for_tree(tree, item_id, col_index, mac, station=True):
+    """
+    Tworzymy checkbox 'na wierzchu' Treeview – w praktyce to 'trick'.
+    Najprościej jest zbudować Canvas i tam wstawić Checkbutton.
+    """
+    # Pozycja komórki w Treeview
+    bbox = tree.bbox(item_id, col_index)
+    if not bbox:
         return
-    threading.Thread(target=run_command, args=(['reaver', '-i', 'wlan1', '-b', selected_bssid, '-S', '-v'],), daemon=True).start()
+    x, y, width, height = bbox
+    # Tworzymy wirtualny widget w obszarze Treeview
+    var = tk.BooleanVar()
+    def on_check():
+        if var.get():
+            # Zaznaczony
+            if station:
+                print(f"[Station selected] BSSID: {mac}")
+                # Tutaj zapisz do global selected_station
+                global selected_station
+                selected_station = mac
+            else:
+                print(f"[Client selected] MAC: {mac}")
+                global selected_client
+                selected_client = mac
 
-# Tworzenie głównego okna aplikacji
+    cb = tk.Checkbutton(tree, variable=var, command=on_check)
+    cb_window = tree.create_window(x, y, anchor="nw", window=cb)
+    # To demo – w praktyce trzeba nasłuchiwać '<<TreeviewScroll>>',
+    # żeby przesuwać checkbox razem z wierszem.
+
+# ====== Budowa głównego okna ====== #
 app = tk.Tk()
 app.title('Airmon-NG GUI')
 
-# Konfiguracja kolumn
-app.grid_columnconfigure(0, weight=1, uniform="column")
-app.grid_columnconfigure(1, weight=1, uniform="column")
+# 1) Góra ekranu: Dwie tabele (Stations, Clients)
+top_frame = tk.Frame(app)
+top_frame.grid(row=0, column=0, columnspan=2, sticky="nsew")
+
+# Stations
+stations_label = tk.Label(top_frame, text="Stations", font=('Helvetica', 16, 'bold'))
+stations_label.grid(row=0, column=0, padx=5, pady=5)
+stations_cols = ("BSSID", "PWR", "Beacons", "Data", "CH", "MB", "Check")
+stations_tree = ttk.Treeview(top_frame, columns=stations_cols, show="headings", height=10)
+for col in stations_cols:
+    stations_tree.heading(col, text=col)
+    stations_tree.column(col, width=80)  # szerokość do dostosowania
+stations_tree.grid(row=1, column=0, padx=5, pady=5)
+
+# Dodaj pionowy scrollbar
+stations_scroll = ttk.Scrollbar(top_frame, orient="vertical", command=stations_tree.yview)
+stations_tree.configure(yscrollcommand=stations_scroll.set)
+stations_scroll.grid(row=1, column=1, sticky="ns")
+
+# Clients
+clients_label = tk.Label(top_frame, text="Clients", font=('Helvetica', 16, 'bold'))
+clients_label.grid(row=0, column=2, padx=5, pady=5)
+clients_cols = ("BSSID", "Station", "PWR", "Rate", "Lost", "Check")
+clients_tree = ttk.Treeview(top_frame, columns=clients_cols, show="headings", height=10)
+for col in clients_cols:
+    clients_tree.heading(col, text=col)
+    clients_tree.column(col, width=80)
+clients_tree.grid(row=1, column=2, padx=5, pady=5)
+
+clients_scroll = ttk.Scrollbar(top_frame, orient="vertical", command=clients_tree.yview)
+clients_tree.configure(yscrollcommand=clients_scroll.set)
+clients_scroll.grid(row=1, column=3, sticky="ns")
+
+# 2) Dół ekranu: przyciski
+#   Zgodnie z Twoim kodem – ten sam układ, tylko w wierszu 2
+button_frame = tk.Frame(app)
+button_frame.grid(row=2, column=0, columnspan=2, sticky="nsew")
 
 def create_button(parent, text, command, row, column):
     button = tk.Button(
@@ -103,23 +250,15 @@ def create_button(parent, text, command, row, column):
     )
     button.grid(row=row, column=column, padx=1, pady=1)
 
-create_button(app, 'Start Airmon', run_airmon, 0, 0)
-create_button(app, 'Show IWConfig', run_iwconfig, 0, 1)
-create_button(app, 'Start NetworkManager', run_systemctl_start_networkmanager, 1, 0)
-create_button(app, 'Stop NetworkManager', run_systemctl_stop_networkmanager, 1, 1)
-create_button(app, 'Restart NetworkManager', run_systemctl_restart_networkmanager, 2, 0)
-create_button(app, 'Airmon Check Kill', run_airmon_check_kill, 2, 1)
-create_button(app, 'Start Airodump', run_airodump, 3, 0)
-create_button(app, 'Wash', run_wash, 3, 1)
-create_button(app, 'Reaver', run_reaver, 4, 0)
-create_button(app, 'Stop Command', stop_command, 4, 1)
-
-scrollbar = tk.Scrollbar(app)
-scrollbar.grid(row=5, column=2, sticky=tk.NS)
-
-output = tk.Text(app, height=20, width=80, font=('Courier', 14), yscrollcommand=scrollbar.set)
-output.grid(row=5, column=0, columnspan=2, padx=10, pady=10)
-
-scrollbar.config(command=output.yview)
+create_button(button_frame, 'Start Airmon', run_airmon, 0, 0)
+create_button(button_frame, 'Show IWConfig', run_iwconfig, 0, 1)
+create_button(button_frame, 'Start NetworkManager', run_systemctl_start_networkmanager, 1, 0)
+create_button(button_frame, 'Stop NetworkManager', run_systemctl_stop_networkmanager, 1, 1)
+create_button(button_frame, 'Restart NetworkManager', run_systemctl_restart_networkmanager, 2, 0)
+create_button(button_frame, 'Airmon Check Kill', run_airmon_check_kill, 2, 1)
+create_button(button_frame, 'Start Airodump', run_airodump, 3, 0)
+create_button(button_frame, 'Wash', lambda: print("Wash not implemented."), 3, 1)  # Możesz dodać run_wash
+create_button(button_frame, 'Reaver', run_reaver, 4, 0)
+create_button(button_frame, 'Stop Command', stop_command, 4, 1)
 
 app.mainloop()
