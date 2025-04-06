@@ -90,6 +90,7 @@ def parse_airodump_output():
     parse_mode = None
     for line in iter(process.stdout.readline, ''):
         line_str = line.strip()
+        print("DBG:", line_str)  # dodaj to
         if not line_str:
             parse_mode = None
             continue
